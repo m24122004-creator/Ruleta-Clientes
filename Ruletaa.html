@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎰 Ruleta Casino PRO</title>
+<style>
+body {
+  font-family: 'Arial Black', Arial, sans-serif;
+  background: radial-gradient(circle at top, #0a0a0a, #1c1c1c);
+  color: #fff; margin:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; min-height:100vh; padding:20px;
+}
+h1 {
+  text-align:center;
+  margin-bottom:20px;
+  font-size:2.2em;
+  color:#f5d442;
+  text-shadow: 0 0 10px #f5d442, 0 0 20px #f59e0b;
+}
+input, button {
+  padding:12px 15px; font-size:16px; margin:5px; border-radius:12px; border:none;
+  transition: all 0.3s ease;
+}
+input:focus { outline:none; box-shadow:0 0 10px #f5d442;}
+button:hover:not(:disabled) { transform: scale(1.08); box-shadow:0 0 15px #f5d442; }
+button:disabled { opacity:0.6; cursor:not-allowed; }
+
+#juego { display:none; margin-top:20px; width:100%; max-width:450px;}
+#ruletaCanvas {
+  display:block; margin:20px auto; border-radius:50%;
+  background: radial-gradient(circle at center, #111, #222);
+  box-shadow: 0 0 30px #f5d442 inset, 0 0 20px #000;
+}
+#flecha {
+  width:0; height:0;
+  border-left:25px solid transparent;
+  border-right:25px solid transparent;
+  border-bottom:50px solid #f5d442;
+  margin:auto; filter: drop-shadow(0 0 10px #fff);
+  animation: parpadeo 1s infinite;
+}
+@keyframes parpadeo {
+  0%, 100% { filter: drop-shadow(0 0 10px #fff); }
+  50% { filter: drop-shadow(0 0 25px #f5d442); }
+}
+.msg {
+  font-weight:bold; margin-top:15px; font-size:16px; text-align:center;
+  background:linear-gradient(90deg,#f5d442,#f59e0b);
+  padding:12px; border-radius:12px; color:#111;
+  box-shadow:0 0 15px #f5d442;
+  transition: all 0.3s ease;
+}
+#listaPremios { margin-top:20px; width:100%; max-width:450px; list-style-type:none; padding-left:0; }
+#listaPremios li {
+  background:#f5d442; color:#111; padding:10px; margin:5px 0;
+  border-radius:12px; text-align:center;
+  box-shadow:0 0 15px #f5d442 inset, 0 0 10px #000;
+  font-weight:bold;
+  font-size:16px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+#listaPremios li.nuevo { transform: scale(1.2); box-shadow:0 0 25px #f5d442 inset, 0 0 20px #fff; }
+</style>
+</head>
+<body>
+<h1>🎰 Ruleta Casino PRO</h1>
+
+<div id="registroForm">
+<input type="text" id="nombre" placeholder="Tu nombre completo">
+<button id="registrar">Registrar</button>
+</div>
+
+<div id="juego">
+<p id="jugador"></p>
+<div id="flecha"></div>
+<canvas id="ruletaCanvas" width="400" height="400"></canvas>
+<button id="girar">🎡 Girar</button>
+<p id="resultado" class="msg"></p>
+<ul id="listaPremios"></ul>
+<audio id="sonidoGiro" src="https://www.soundjay.com/mechanical/sounds/slot-machine-01.mp3" preload="auto"></audio>
+</div>
+
+<script>
+const premios = [
+  {texto:'🎁 1 Giro extra', color:'#f5d442'},
+  {texto:'🙈 Gracias por participar', color:'#f59e0b'},
+  {texto:'🎁 Corte gratis', color:'#f5d442'},
+  {texto:'💲2.000', color:'#f59e0b'},
+  {texto:'🎉 Premio especial', color:'#f5d442'},
+  {texto:'💲2.000', color:'#f59e0b'},
+  {texto:'🎁 1 Giro extra', color:'#f5d442'},
+  {texto:'🎁 Corte gratis', color:'#f59e0b'},
+  {texto:'🎁 1 Giro extra', color:'#f5d442'},
+  {texto:'🙈 Gracias por participar', color:'#f59e0b'}
+];
+
+const registroForm = document.getElementById("registroForm");
+const juegoDiv = document.getElementById("juego");
+const registrarBtn = document.getElementById("registrar");
+const nombreInput = document.getElementById("nombre");
+const jugadorP = document.getElementById("jugador");
+const girarBtn = document.getElementById("girar");
+const resultado = document.getElementById("resultado");
+const listaPremios = document.getElementById("listaPremios");
+const sonidoGiro = document.getElementById("sonidoGiro");
+
+const canvas = document.getElementById("ruletaCanvas");
+const ctx = canvas.getContext("2d");
+const radius = canvas.width / 2;
+
+let girando = false;
+
+// Mostrar juego si ya hay jugador registrado
+let registrado = localStorage.getItem("jugador");
+if(registrado){
+  registroForm.style.display = "none";
+  juegoDiv.style.display = "block";
+  jugadorP.innerText = "Jugador: " + registrado;
+}
+
+// Registrar jugador y mostrar juego
+registrarBtn.addEventListener("click", ()=>{
+  let nombre = nombreInput.value.trim();
+  if(nombre){
+    localStorage.setItem("jugador", nombre);
+    registroForm.style.display = "none";
+    juegoDiv.style.display = "block";
+    jugadorP.innerText = "Jugador: " + nombre;
+  } else { alert("Por favor escribe tu nombre."); }
+});
+
+// Dibujar ruleta
+function dibujarRuleta(rot=0){
+  const ang = (2*Math.PI)/premios.length;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.translate(radius,radius);
+  ctx.rotate(rot);
+  for(let i=0;i<premios.length;i++){
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.arc(0,0,radius,i*ang,(i+1)*ang);
+    ctx.closePath();
+    ctx.fillStyle=premios[i].color;
+    ctx.fill();
+    ctx.strokeStyle="#111";
+    ctx.lineWidth=3;
+    ctx.shadowColor="#fff";
+    ctx.shadowBlur=8;
+    ctx.stroke();
+    ctx.shadowBlur=0;
+    ctx.save();
+    ctx.rotate(i*ang+ang/2);
+    ctx.textAlign="right";
+    ctx.fillStyle="#111";
+    ctx.font="bold 16px Arial";
+    ctx.fillText(premios[i].texto,radius-15,0);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// Girar ruleta
+girarBtn.addEventListener("click", ()=>{
+  if(girando) return;
+  girando=true;
+  girarBtn.disabled=true;
+  sonidoGiro.currentTime=0;
+  sonidoGiro.play();
+  let totalVueltas = Math.random()*5 +5;
+  let durMs = 5000 + Math.random()*1500;
+  let start = performance.now();
+  let rotActual = 0;
+  function easeOut(t){return 1-Math.pow(1-t,3);}
+  function frame(now){
+    let p=Math.min(1,(now-start)/durMs);
+    let eased = easeOut(p);
+    let giro = totalVueltas*2*Math.PI*eased;
+    dibujarRuleta(rotActual+giro);
+    if(p<1){ requestAnimationFrame(frame);}
+    else{
+      rotActual = (rotActual+giro)%(2*Math.PI);
+      let premio = calcularPremio(rotActual);
+      finalizarGiro(premio);
+    }
+  }
+  requestAnimationFrame(frame);
+});
+
+function calcularPremio(rotFinal){
+  const ang = (2*Math.PI)/premios.length;
+  const offset = Math.PI/2;
+  let a = (offset - rotFinal)%(2*Math.PI);
+  if(a<0) a+=2*Math.PI;
+  const index = Math.floor(a/ang)%premios.length;
+  return premios[index].texto;
+}
+
+// Finalizar giro y agregar a lista
+function finalizarGiro(premio){
+  resultado.innerText="🎉 Ganaste: "+premio;
+  resultado.style.transform="scale(1.2)";
+  setTimeout(()=>resultado.style.transform="scale(1)",500);
+
+  const li = document.createElement("li");
+  li.innerText = localStorage.getItem("jugador")+" ➤ "+premio;
+  li.classList.add("nuevo");
+  listaPremios.prepend(li);
+  setTimeout(()=>li.classList.remove("nuevo"),500);
+
+  if(premio.includes("Giro extra")){
+    girarBtn.disabled=false;
+    girando=false;
+    resultado.innerText+=" ✨ ¡Giro extra disponible!";
+  } else {
+    girando=false;
+    localStorage.setItem("yaJugo","true");
+  }
+}
+
+dibujarRuleta(0);
+</script>
+</body>
+</html>
