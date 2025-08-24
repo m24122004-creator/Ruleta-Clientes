@@ -1,0 +1,282 @@
+ruleta.html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ruleta de la Suerte</title>
+  <style>
+    :root { --card:#ffffff; --bg:#0f172a; --muted:#64748b; --primary:#22c55e; --danger:#ef4444; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, Arial, sans-serif; background: linear-gradient(180deg,#0b1220,#111827);
+      color: #e5e7eb; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px;
+    }
+    .wrap {
+      width: 100%; max-width: 520px; background: #0b1220aa; backdrop-filter: blur(6px);
+      border: 1px solid #1f2937; border-radius: 16px; padding: 20px;
+    }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    p.muted { color: var(--muted); margin: 0 0 16px; }
+    .card {
+      background: var(--card); color: #0f172a; border-radius: 14px; padding: 16px; border: 1px solid #e5e7eb;
+    }
+    .row { display: flex; gap: 10px; }
+    input[type="text"] {
+      flex: 1; padding: 12px 14px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 16px;
+    }
+    button {
+      border: 0; border-radius: 10px; padding: 12px 16px; font-size: 16px; font-weight: 600; cursor: pointer;
+    }
+    button.primary { background: var(--primary); color: white; }
+    button.secondary { background: #111827; color: #e5e7eb; border: 1px solid #374151; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .center { text-align: center; }
+    canvas { display: block; margin: 18px auto; }
+    .pointer {
+      width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent;
+      border-bottom: 22px solid #f59e0b; margin: 0 auto 8px; filter: drop-shadow(0 2px 0 rgba(0,0,0,.3));
+    }
+    .msg { text-align: center; margin-top: 8px; font-weight: 600; }
+    .msg.error { color: var(--danger); }
+    .msg.ok { color: var(--primary); }
+    small.note { display:block; color:#6b7280; text-align:center; margin-top:8px;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🎉 Ruleta de la Suerte</h1>
+    <p class="muted">Ingresá tu nombre. Solo hay <b>1 intento</b> por persona.</p>
+
+    <div class="card">
+      <div class="row">
+        <input id="nombreInput" type="text" placeholder="Tu nombre" autocomplete="name" />
+        <button id="btnRegistrar" class="primary">Registrarse</button>
+      </div>
+      <small class="note">Tip: usá tu nombre y apellido para evitar duplicados 😉</small>
+
+      <div id="juego" style="display:none; margin-top:16px;">
+        <div class="pointer"></div>
+        <canvas id="ruleta" width="380" height="380"></canvas>
+        <div class="center">
+          <button id="btnGirar" class="secondary" disabled>🎡 Girar</button>
+        </div>
+        <div id="resultado" class="msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /************ CONFIG ************/
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx15mgJrhcWCq507MH5pKqk6ADh9sd5yPGLBAkoSvR8upVmjHVrts0F2Iqd2N9teq17/exec'; // <- reemplazar por tu URL /exec
+    const OPCIONES = [
+      '🎁 1 Giro extra', '🙈 “Gracias por participar”', '🎁 Corte grtis', '💲2.000', '🎉 Premio especial ',’💲2.000’, '🎁 1 Giro extra',
+      '🎁 Corte grtis', '🎁 1 Giro extra', '🙈 “Gracias por participar”’
+    ];
+    /********************************/
+
+    // Estado
+    let usuario = '';
+    let jugadoLocal = false; // control local (UX); el backend valida en serio
+
+    const $ = (sel) => document.querySelector(sel);
+    const inputNombre = $('#nombreInput');
+    const btnRegistrar = $('#btnRegistrar');
+    const juego = $('#juego');
+    const canvas = $('#ruleta');
+    const ctx = canvas.getContext('2d');
+    const btnGirar = $('#btnGirar');
+    const resultado = $('#resultado');
+    const radius = canvas.width / 2;
+
+    // Dibuja la ruleta
+    function dibujarRuleta(rot = 0) {
+      const ang = (2 * Math.PI) / OPCIONES.length;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(radius, radius);
+      ctx.rotate(rot);
+      for (let i = 0; i < OPCIONES.length; i++) {
+        // por simplicidad de estilos, alternamos colores
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, radius - 4, i * ang, (i + 1) * ang);
+        ctx.closePath();
+        ctx.fillStyle = i % 2 === 0 ? '#fde68a' : '#f59e0b';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#111827';
+        ctx.stroke();
+
+        // texto
+        ctx.save();
+        ctx.rotate(i * ang + ang / 2);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#111827';
+        ctx.font = 'bold 14px system-ui';
+        wrapText(OPCIONES[i], radius - 12, 0, radius - 30, 16);
+        ctx.restore();
+      }
+      ctx.restore();
+      // aro
+      ctx.beginPath();
+      ctx.arc(radius, radius, radius - 2, 0, 2 * Math.PI);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#374151';
+      ctx.stroke();
+    }
+
+    function wrapText(text, x, y, maxWidth, lineHeight) {
+      const words = text.split(' ');
+      let line = '';
+      for (let n = 0; n < words.length; n++) {
+        const testLine = line + words[n] + ' ';
+        const metrics = ctx.measureText(testLine);
+        if (metrics.width > maxWidth && n > 0) {
+          ctx.fillText(line, x, y);
+          line = words[n] + ' ';
+          y += lineHeight;
+        } else {
+          line = testLine;
+        }
+      }
+      ctx.fillText(line.trim(), x, y);
+    }
+
+    // Consulta al backend si ya jugó ese nombre
+    async function checkNombre(nombre) {
+      const res = await fetch(WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'check', nombre })
+      });
+      const data = await res.json();
+      return !!(data && data.alreadyPlayed);
+    }
+
+    // Guarda resultado
+    async function saveResultado(nombre, premio) {
+      const res = await fetch(WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save', nombre, premio })
+      });
+      return res.json();
+    }
+
+    // Registro
+    btnRegistrar.addEventListener('click', async () => {
+      const nombre = (inputNombre.value || '').trim();
+      if (!nombre) {
+        showMsg('Por favor, ingresá tu nombre.', true);
+        return;
+      }
+      toggleLoading(btnRegistrar, true, 'Verificando…');
+      try {
+        const yaJugo = await checkNombre(nombre);
+        usuario = nombre;
+        juego.style.display = 'block';
+        dibujarRuleta(0);
+
+        if (yaJugo || localStorage.getItem(keyLocal(nombre))) {
+          jugadoLocal = true;
+          btnGirar.disabled = true;
+          showMsg(`⚠️ ${usuario}, ya usaste tu oportunidad.`, true);
+        } else {
+          jugadoLocal = false;
+          btnGirar.disabled = false;
+          showMsg(`¡Registrado! ${usuario}, podés girar la ruleta.`, false);
+        }
+      } catch (e) {
+        showMsg('Error de conexión. Probá de nuevo.', true);
+      } finally {
+        toggleLoading(btnRegistrar, false, 'Registrarse');
+      }
+    });
+
+    // Giro
+    let rotActual = 0;
+    let girando = false;
+
+    btnGirar.addEventListener('click', async () => {
+      if (!usuario) return showMsg('Primero registrate con tu nombre.', true);
+      if (jugadoLocal || girando) return;
+      girando = true; btnGirar.disabled = true; showMsg('Girando…', false);
+
+      const totalVueltas = Math.random() * 4 + 5; // entre 5 y 9 vueltas
+      const durMs = 4500 + Math.random() * 1500; // 4.5 a 6 seg
+      const start = performance.now();
+      const easeOut = t => 1 - Math.pow(1 - t, 3);
+
+      function frame(now) {
+        const p = Math.min(1, (now - start) / durMs);
+        const eased = easeOut(p);
+        const giro = totalVueltas * 2 * Math.PI * eased;
+        dibujarRuleta(rotActual + giro);
+        if (p < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          rotActual = (rotActual + giro) % (2 * Math.PI);
+          const premio = calcularPremio(rotActual);
+          finalizarGiro(premio);
+        }
+      }
+      requestAnimationFrame(frame);
+    });
+
+    function calcularPremio(rotFinal) {
+      // La punta señala 0 radianes; mapeamos segmento inverso
+      const ang = (2 * Math.PI) / OPCIONES.length;
+      // Ajuste: nuestro dibujo comienza en 0 hacia la derecha, la flecha está arriba (pi*1.5)
+      const offset = Math.PI * 1.5;
+      let a = (offset - rotFinal) % (2 * Math.PI);
+      if (a < 0) a += 2 * Math.PI;
+      const index = Math.floor(a / ang) % OPCIONES.length;
+      return OPCIONES[index];
+    }
+
+    async function finalizarGiro(premio) {
+      try {
+        const r = await saveResultado(usuario, premio);
+        if (r.status === 'saved') {
+          showMsg(`🎊 ¡Felicidades, ${usuario}! Ganaste: ${premio}`, false, true);
+          localStorage.setItem(keyLocal(usuario), '1');
+          jugadoLocal = true;
+        } else if (r.status === 'already_played') {
+          showMsg(`⚠️ ${usuario}, ya habías jugado antes.`, true);
+        } else {
+          showMsg('Hubo un problema guardando el resultado.', true);
+        }
+      } catch (e) {
+        showMsg('Error de red al guardar el resultado.', true);
+      } finally {
+        girando = false;
+        btnGirar.disabled = true;
+      }
+    }
+
+    function keyLocal(nombre) {
+      return 'ruleta_played_' + nombre.trim().toLowerCase();
+    }
+
+    function showMsg(text, isError = false, isOk = false) {
+      resultado.className = 'msg ' + (isError ? 'error' : (isOk ? 'ok' : ''));
+      resultado.textContent = text;
+    }
+
+    function toggleLoading(btn, loading, textWhenDone) {
+      if (loading) {
+        btn.dataset.prev = btn.textContent;
+        btn.textContent = '...';
+        btn.disabled = true;
+      } else {
+        btn.textContent = textWhenDone || btn.dataset.prev || 'OK';
+        btn.disabled = false;
+      }
+    }
+
+    // Primer dibujo
+    dibujarRuleta(0);
+  </script>
+</body>
+</html>
